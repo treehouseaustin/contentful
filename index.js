@@ -82,18 +82,37 @@ class ContentfulCache {
     });
   }
 
+  // Caching
+  // --
+
   /**
    * Override this in your implementation if you need to perform logic in your
    * application once a record cache has been created or updated. Otherwise,
    * just use `cache.get` to retrieve entries from cache or API.
    */
   onCacheUpdate() {}
+
+  /**
+   * Update the internal cache with an entry returned from the API.
+   * @param {Object} entry - A raw Contentful entry from the API.
+   * @return {Object} - The wrapped entry.
+   */
+  cacheUpdate(entry) {
+    entry = this.wrap(entry);
+    this.cache.set(entry.sys.id, entry);
+    this.onCacheUpdate(entry);
+    return entry;
+  }
+
   /**
    * Override this in your implementation if you need to perform logic in your
    * application once a record has been removed from cache. This will not be
    * called when a record has expired or if you use `cache.del` manually.
    */
   onCacheDestroy() {}
+
+  // Sync
+  // --
 
   /**
    * Helper function to run a full sync against Contentful. All content will be
@@ -120,18 +139,11 @@ class ContentfulCache {
       entry = entry.toPlainObject();
 
       if (!entry.items[0]) return;
-
-      entry = this.wrap(entry.items[0]);
-      this.onCacheUpdate(entry);
-      this.cache.set(entry.sys.id, entry);
-
-      return entry;
+      return this.cacheUpdate(entry.items[0]);
     });
   }
 
   /**
-   * .syncPaged
-   * --
    * The `sync` function provided by Contentful does not work under Preview
    * mode. This replaces the built-in convenience function with our own which
    * will work consistently between development and production.
@@ -150,9 +162,7 @@ class ContentfulCache {
 
       // Each entry is wrapped and cached.
       _.each(response.items, (entry) => {
-        entry = this.wrap(entry);
-        this.cache.set(entry.sys.id, entry);
-        this.onCacheUpdate(entry);
+        this.cacheUpdate(entry);
       });
 
       // When the number of entries exceeds what we have downloaded thus far,
