@@ -1,0 +1,179 @@
+const _ = require('lodash');
+const cache = require('cache-manager');
+const contentful = require('contentful');
+
+const ContentfulWrapper = require('./lib/wrapper.js');
+
+/**
+ * The Contentful cache store can be used to keep a local copy of all entries in
+ * the CMS. This is useful to keep response times and API utilization low while
+ * keeping content as up-to-date as possible.
+ *
+ * In addition to cache capabilities, each entry is wrapped in a set of
+ * convenience functions and helper properties to make interaction with the
+ * content easier in server-side views.
+ */
+class ContentfulCache {
+
+  /**
+   * Create a new Contentful cache store linked to a single `space`.
+   * @param {String} space - The Contentful space ID.
+   * @param {Object} config - Configuration for the cache store.
+   * @param {Object} config.cache - Configuration for the cache store. Default
+   * behaviour is to use a memory store. Documented options can be found here:
+   * https://github.com/BryanDonovan/node-cache-manager
+   * @param {Object} config.wrapper - Options to pass to the Contentful Wrapper
+   * service. Among other things this will allow you to overwrite the Markdown
+   * settings and map URLs to their content types when fetching slugs.
+   * @param {String} config.env - The environment controls whether the Live or
+   * Preview APIs are used to fetch from Contentful. Defaults to the value of
+   * `process.env.NODE_ENV`.
+   */
+  constructor(space, config) {
+    this.cache = cache.caching(config.cache || {
+      store: 'memory',
+    });
+
+    this.space = space;
+    this.accessToken = config.accessToken;
+    this.previewToken = config.previewToken;
+    this.lang = config.lang || 'en-US';
+
+    this.wrapperConfig = config.wrapper;
+
+    this.env = config.env || process.env.NODE_ENV;
+    this.isProd = this.env === 'production';
+  }
+
+  /**
+   * Initialize the API client which is used for communication with Contentful.
+   * Repeated calls to `.client()` after the Contentful client has been created
+   * will return a cached instance.
+   * @return {Object} - Contentful API client.
+   */
+  client() {
+    if (this.connect) return this.connect;
+
+    // When running in `development` mode, the Contentful API client will
+    // automatically switch over to Preview mode. This displays both published
+    // and unpublished content. It is important that the access token be set
+    // properly (Preview vs. Production) based on the environment.
+    const accessToken = this.isProd ? this.accessToken : this.previewToken;
+    const host = !this.isProd ? 'preview.contentful.com' : null;
+
+    this.connect = contentful.createClient({
+      accessToken,
+      host,
+      space: this.space,
+    });
+
+    return this.connect;
+  }
+
+  /**
+   * Retrieve a single entry by it's UUID. If the entry is  missing from cache,
+   * an API request will be made to fetch from Contentful.
+   * @param {String} entryId - Contentful UUID.
+   * @return {Promise} - Resolved with the entry object.
+   */
+  entry(entryId) {
+    return this.cache.wrap(entryId, () => {
+      return this.syncOne(entryId);
+    });
+  }
+
+  /**
+   * Override this in your implementation if you need to perform logic in your
+   * application once a record cache has been created or updated. Otherwise,
+   * just use `cache.get` to retrieve entries from cache or API.
+   */
+  onCacheUpdate() {}
+  /**
+   * Override this in your implementation if you need to perform logic in your
+   * application once a record has been removed from cache. This will not be
+   * called when a record has expired or if you use `cache.del` manually.
+   */
+  onCacheDestroy() {}
+
+  /**
+   * Helper function to run a full sync against Contentful. All content will be
+   * pulled down with paginated API requests and cached.
+   */
+  sync() {
+    this.syncPaged();
+  }
+
+  /**
+   * .syncOne
+   * --
+   * Returns a structure functionally similar to `syncPaged` but without the
+   * overhead of going through every single entry. This is used to update a
+   * single entry in cache if it has expired or is not found.
+   * @param {String} entryId - Contentful UUID for the entry.
+   * @return {Promise} - Fullfilled with the wrapped Contentful entry.
+   */
+  syncOne(entryId) {
+    return this.client().getEntries({
+      'sys.id': entryId,
+      'locale': '*',
+    }).then((entry) => {
+      entry = entry.toPlainObject();
+
+      if (!entry.items[0]) return;
+
+      entry = this.wrap(entry.items[0]);
+      this.onCacheUpdate(entry);
+      this.cache.set(entry.sys.id, entry);
+
+      return entry;
+    });
+  }
+
+  /**
+   * .syncPaged
+   * --
+   * The `sync` function provided by Contentful does not work under Preview
+   * mode. This replaces the built-in convenience function with our own which
+   * will work consistently between development and production.
+   * @param {Number} limit How many entries to include. Defaults to 250.
+   * @param {Number} skip How many entries to skip; will be auto-incremented.
+   * @return {Promise} - Fullfilled once all pages have been sync'd.
+   */
+  syncPaged(limit, skip) {
+    return this.client().getEntries({
+      locale: '*',
+      limit: limit || 250,
+      order: '-sys.updatedAt',
+      skip: skip || 0,
+    }).then((response) => {
+      response = response.toPlainObject();
+
+      // Each entry is wrapped and cached.
+      _.each(response.items, (entry) => {
+        entry = this.wrap(entry);
+        this.cache.set(entry.sys.id, entry);
+        this.onCacheUpdate(entry);
+      });
+
+      // When the number of entries exceeds what we have downloaded thus far,
+      // the function calls itself with the same limit and an auto-incremented
+      // value for `skip`.
+      if (response.total > response.skip + response.limit) {
+        return this.syncPaged(limit, response.skip + response.limit);
+      }
+
+      return response;
+    });
+  }
+
+  /**
+   * Wrap a single entry in the Contentful entity wrapper.
+   * @param {Object} entry - The entry to wrap.
+   * @return {Object} - The wrapped entity.
+   */
+  wrap(entry) {
+    return new ContentfulWrapper(entry, this.wrapperConfig);
+  }
+}
+
+module.exports = ContentfulCache;

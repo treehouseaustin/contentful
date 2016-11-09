@@ -1,0 +1,6 @@
+coverage
+docs
+node_modules
+*.log
+.tmp
+.DS_Store
