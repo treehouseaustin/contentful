@@ -56,3 +56,43 @@ const ContentAPI = new Contentful('SPACEID', {
 
 Detailed documentation on the available methods and configuration options for
 the wrapper class [can be found here](./lib/WRAPPER.md).
+
+Routing
+--
+
+As content is sync'd a routing map is built based on the slug in Contentful that
+can be used in your application to serve the page contents. By default, the slug
+is determined based on the machine ID of the entry in Contentful. In many cases
+this may be sufficient, but if you inherit an existing content model or use any
+of the default content types you may want to override this. To do so, pass a
+keyed object to `config.wrapper.urlMapping` where the key is the machine ID of
+the content type in Contentful and the value is the path to use in routing:
+
+```
+const ContentAPI = new Contentful('SPACEID', {
+  ...
+  wrapper: {
+    urlMapping: {
+      blogPosts: 'blog'
+    }
+  }
+});
+```
+
+This configuration will map the `blogPosts` content type in Contentful to the
+route `/blog`. An entry with the slug `my-awesome-blog-post` will have a final
+route of `/blog/my-awesome-blog-post`
+
+The final cached routing map is a keyed object where the key represents the
+final resolved path. The value is an array with two values that can be used for
+lookup of the content entity from cache: the first value corresponding to the
+machine ID of the content type and the second value corresponding to the ID of
+the content. So the example above would produce the following routing map:
+
+```
+routes: {
+  '/blog/my-awesome-blog-post': ['blogPosts', '3iJsN1jc5qQGa8cwmesQQq']
+}
+```
+
+When content is removed from cache the route is removed as well.

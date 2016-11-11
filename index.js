@@ -43,6 +43,8 @@ class ContentfulCache {
 
     this.env = config.env || process.env.NODE_ENV;
     this.isProd = this.env === 'production';
+
+    this.routes = {};
   }
 
   /**
@@ -101,6 +103,11 @@ class ContentfulCache {
     entry = this.wrap(entry);
     this.cache.set(entry.sys.id, entry);
     this.onCacheUpdate(entry);
+
+    if (entry.slug) {
+      this.routes[entry.slug] = [entry.sys.contentType.sys.id, entry.sys.id];
+    }
+
     return entry;
   }
 
@@ -110,6 +117,21 @@ class ContentfulCache {
    * called when a record has expired or if you use `cache.del` manually.
    */
   onCacheDestroy() {}
+
+  /**
+   * Remove an entry from cache including it's route. This is typically used
+   * to unpublish an entry in production but can be triggered manually also.
+   * @param {Object} entryId - ID of the Contentful entry.
+   */
+  cacheDestroy(entryId) {
+    this.cache.del(entryId);
+    this.onCacheDestroy(entryId);
+
+    const route = _.findKey(this.routes, (val) => val[1] === entryId);
+    if (route) {
+      delete this.routes[route];
+    }
+  }
 
   // Sync
   // --
