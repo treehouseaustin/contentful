@@ -3,6 +3,7 @@ const cache = require('cache-manager');
 const contentful = require('contentful');
 
 const ContentfulWrapper = require('./lib/wrapper.js');
+const embed = require('./lib/embed-asset.js');
 
 /**
  * The Contentful cache store can be used to keep a local copy of all entries in
@@ -39,7 +40,8 @@ class ContentfulCache {
     this.previewToken = config.previewToken;
     this.lang = config.lang || 'en-US';
 
-    this.wrapperConfig = config.wrapper;
+    this.wrapperConfig = config.wrapper || {};
+    this.wrapperConfig.spaceId = this.space;
 
     this.env = config.env || process.env.NODE_ENV;
     this.isProd = this.env === 'production';
@@ -70,6 +72,41 @@ class ContentfulCache {
     });
 
     return this.connect;
+  }
+
+  /**
+   * Retrieve a single asset by it's UUID. The asset will be wrapped in an embed
+   * decorator which could be a function or a string depending on the file type.
+   * @param {String} assetId - Contentful asset UUID.
+   * @return {Promise} - Resolved with the embed decorator.
+   */
+  asset(assetId) {
+    return this.cache.wrap(`asset.${assetId}`, () => {
+      return this.client().getAsset(assetId);
+    }).then((asset) => {
+      return embed(asset.fields.file, this.wrapperConfig);
+    });
+  }
+
+  /**
+   * Retrieve multiple assets by their UUID. Each asset will be returned as a
+   * keyed object where the ID of the image is it's key and the value is wrapped
+   * in an embed decorator based on the file type.
+   * @param {Array} assetIds - Multiple contentful asset UUIDs.
+   * @return {Promise} - Resolved with all images in an object.
+   */
+  assets(assetIds) {
+    return this.client().getAssets({
+      'sys.id[in]': assetIds.join(','),
+      'locale': '*',
+    }).then((assets) => {
+      let wrapped = {};
+      assets.items.forEach((asset) => {
+        const field = asset.fields.file[this.lang];
+        wrapped[asset.sys.id] = embed(field, this.wrapperConfig);
+      });
+      return wrapped;
+    });
   }
 
   /**
