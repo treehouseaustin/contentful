@@ -194,6 +194,7 @@ class ContentfulCache {
     return this.client().getEntries({
       'sys.id': entryId,
       'locale': '*',
+      'include': 10,
     }).then((entry) => {
       entry = entry.toPlainObject();
 
