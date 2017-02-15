@@ -214,6 +214,7 @@ class ContentfulCache {
   syncPaged(limit, skip) {
     return this.client().getEntries({
       locale: '*',
+      include: 10,
       limit: limit || 250,
       order: '-sys.updatedAt',
       skip: skip || 0,
