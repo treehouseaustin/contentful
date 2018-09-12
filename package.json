@@ -4,28 +4,35 @@
   "version": "0.1.4",
   "license": "MIT",
   "main": "index.js",
-  "scripts": {},
+  "scripts": {
+    "test": "jest"
+  },
   "dependencies": {
     "cache-manager": "^2.2.0",
     "contentful": "^3.7.0",
     "lodash": "^4.16.6",
-    "marked": "^0.3.6",
+    "marked": "^0.5.0",
     "moment": "^2.15.2",
     "querystring": "^0.2.0",
     "striptags": "^2.1.1"
   },
   "devDependencies": {
-    "eslint": "^3.9.1",
-    "eslint-config-google": "^0.7.0"
+    "eslint": "^5.5.0",
+    "eslint-config-google": "^0.10.0",
+    "jest": "^23.6.0"
   },
   "engines": {
-    "node": "6.x",
-    "npm": "3.x"
+    "node": "8.x",
+    "npm": "6.x"
   },
   "eslintConfig": {
     "extends": "google",
     "parserOptions": {
-      "ecmaVersion": 6
+      "ecmaVersion": 8
     }
+  },
+  "jest": {
+    "collectCoverage": true,
+    "coverageDirectory": "coverage"
   }
 }
