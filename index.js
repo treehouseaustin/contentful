@@ -15,7 +15,6 @@ const embed = require('./lib/embed-asset.js');
  * content easier in server-side views.
  */
 class ContentfulCache {
-
   /**
    * Create a new Contentful cache store linked to a single `space`.
    * @param {String} space - The Contentful space ID.
@@ -30,7 +29,7 @@ class ContentfulCache {
    * Preview APIs are used to fetch from Contentful. Defaults to the value of
    * `process.env.NODE_ENV`.
    */
-  constructor(space, config) {
+  constructor(space, config = {}) {
     this.cache = cache.caching(config.cache || {
       store: 'memory',
     });
@@ -45,8 +44,6 @@ class ContentfulCache {
 
     this.env = config.env || process.env.NODE_ENV;
     this.isProd = this.env === 'production';
-
-    this.routes = {};
   }
 
   /**
@@ -142,7 +139,7 @@ class ContentfulCache {
     this.onCacheUpdate(entry);
 
     if (entry.slug) {
-      this.routes[entry.slug] = [entry.sys.contentType.sys.id, entry.sys.id];
+      this.updateRoutes(entry.slug, entry);
     }
 
     return entry;
@@ -163,11 +160,48 @@ class ContentfulCache {
   cacheDestroy(entryId) {
     this.cache.del(entryId);
     this.onCacheDestroy(entryId);
+    this.deleteRoute(entryId);
+  }
 
-    const route = _.findKey(this.routes, (val) => val[1] === entryId);
-    if (route) {
-      delete this.routes[route];
-    }
+  // Routing
+  // --
+
+  /**
+   * Get all routes that have been registered for content.
+   * @return {Promise} Fulfilled with the cache contents.
+   */
+  getRoutes() {
+    return new Promise((resolve, reject) => {
+      this.cache.get('$routes', (err, results) => {
+        if (err) return reject(err);
+        resolve(results);
+      });
+    });
+  }
+
+  /**
+   * Update routing with new content or flag an existing route to be removed.
+   * @param {String} slug - The route to be modified or created.
+   * @param {Object} entry - Either the Contentful entry or `false` to
+   * mark this route for deletion.
+   */
+  async updateRoute({slug, sys}) {
+    let routes = await this.getRoutes();
+    routes[slug] = [sys.contentType.sys.id, sys.id];
+    this.cache.set('$routes', routes);
+  }
+
+  /**
+   * Delete a route by the content ID. Used when the content has been deleted
+   * to prevent cached routes from sending users to a broken page.
+   * @param {String} entryId - The Contentful entry ID.
+   */
+  async deleteRoute(entryId) {
+    let routes = await this.getRoutes();
+    const key = _.findKey(routes, (val) => val[1] === entryId);
+    if (!key) return;
+    delete routes[key];
+    this.cache.set('$routes', routes);
   }
 
   // Sync
