@@ -210,9 +210,10 @@ class ContentfulCache {
   /**
    * Helper function to run a full sync against Contentful. All content will be
    * pulled down with paginated API requests and cached.
+   * @return {Promise} - Fulfilled when the sync has finished.
    */
   sync() {
-    this.syncPaged();
+    return this.syncPaged();
   }
 
   /**
