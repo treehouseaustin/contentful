@@ -139,7 +139,7 @@ class ContentfulCache {
     this.onCacheUpdate(entry);
 
     if (entry.slug) {
-      this.updateRoutes(entry.slug, entry);
+      this.updateRoute(entry.slug, entry);
     }
 
     return entry;
