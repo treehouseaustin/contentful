@@ -1,9 +1,8 @@
-const _ = require('lodash');
-const cache = require('cache-manager');
 const {createClient} = require('contentful');
 
-const ContentfulWrapper = require('./lib/wrapper.js');
-const embed = require('./lib/embed-asset.js');
+const ContentfulWrapper = require('./lib/wrapper');
+const CacheService = require('./lib/cache');
+const embed = require('./lib/embed-asset');
 
 /**
  * The Contentful cache store can be used to keep a local copy of all entries in
@@ -30,9 +29,7 @@ class ContentfulCache {
    * `process.env.NODE_ENV`.
    */
   constructor(space, config = {}) {
-    this.cache = cache.caching(config.cache || {
-      store: 'memory',
-    });
+    this.cache = new CacheService(config.cache);
 
     this.space = space;
     this.accessToken = config.accessToken;
@@ -114,87 +111,11 @@ class ContentfulCache {
    * @return {Promise} - Resolved with the wrapped entry object.
    */
   async entry(entryId) {
-    let entry = await this.cache.get(entryId);
+    let entry = await this.cache.entry(entryId);
     if (!entry) {
       entry = await this.syncOne(entryId);
     }
     return this.wrap(entry);
-  }
-
-  // Caching
-  // --
-
-  /**
-   * Override this in your implementation if you need to perform logic in your
-   * application once a record cache has been created or updated. Otherwise,
-   * just use `cache.get` to retrieve entries from cache or API.
-   */
-  onCacheUpdate() {}
-
-  /**
-   * Update the internal cache with an entry returned from the API.
-   * @param {Object} entry - Contentful entry from the API.
-   * @return {Object} - The original raw entry.
-   */
-  cacheUpdate(entry) {
-    this.cache.set(entry.sys.id, entry);
-    this.onCacheUpdate(entry);
-    return entry;
-  }
-
-  /**
-   * Override this in your implementation if you need to perform logic in your
-   * application once a record has been removed from cache. This will not be
-   * called when a record has expired or if you use `cache.del` manually.
-   */
-  onCacheDestroy() {}
-
-  /**
-   * Remove an entry from cache including it's route. This is typically used
-   * to unpublish an entry in production but can be triggered manually also.
-   * @param {Object} entryId - ID of the Contentful entry.
-   */
-  cacheDestroy(entryId) {
-    this.cache.del(entryId);
-    this.onCacheDestroy(entryId);
-    this.deleteRoute(entryId);
-  }
-
-  // Routing
-  // --
-
-  /**
-   * Get all routes that have been registered for content.
-   * @return {Promise} Fulfilled with the cache contents.
-   */
-  getRoutes() {
-    return this.cache.get('$routes');
-  }
-
-  /**
-   * Update internal routing cache with new content.
-   * @param {Object} routes - New routes to be merged.
-   * @return {Promise}
-   */
-  async updateRoutes(routes) {
-    let existing = await this.getRoutes();
-    return this.cache.set('$routes', {
-      ...existing,
-      ...routes,
-    });
-  }
-
-  /**
-   * Delete a route by the content ID. Used when the content has been deleted
-   * to prevent cached routes from sending users to a broken page.
-   * @param {String} entryId - The Contentful entry ID.
-   */
-  async deleteRoute(entryId) {
-    let routes = await this.getRoutes();
-    const key = _.findKey(routes, (val) => val[1] === entryId);
-    if (!key) return;
-    delete routes[key];
-    this.cache.set('$routes', routes);
   }
 
   // Sync
@@ -227,7 +148,7 @@ class ContentfulCache {
       entry = entry.toPlainObject();
 
       if (!entry.items[0]) return;
-      return this.cacheUpdate(entry.items[0]);
+      return this.cache.update(entry.items[0]);
     });
   }
 
@@ -248,18 +169,7 @@ class ContentfulCache {
       skip: skip || 0,
     }).then((response) => {
       response = response.toPlainObject();
-
-      const routes = response.items
-          .filter(({fields}) => !!fields.slug)
-          .reduce((all, {fields, sys}) => {
-            all[fields.slug[this.lang]] = [sys.contentType.sys.id, sys.id];
-            return all;
-          }, {});
-
-      this.updateRoutes(routes);
-
-      // Each entry is cached.
-      response.items.map(async (entry) => await this.cacheUpdate(entry));
+      this.cache.updateEntries(response.items);
 
       // When the number of entries exceeds what we have downloaded thus far,
       // the function calls itself with the same limit and an auto-incremented
