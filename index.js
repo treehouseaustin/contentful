@@ -1,6 +1,6 @@
 const _ = require('lodash');
 const cache = require('cache-manager');
-const contentful = require('contentful');
+const {createClient} = require('contentful');
 
 const ContentfulWrapper = require('./lib/wrapper.js');
 const embed = require('./lib/embed-asset.js');
@@ -48,11 +48,11 @@ class ContentfulCache {
 
   /**
    * Initialize the API client which is used for communication with Contentful.
-   * Repeated calls to `.client()` after the Contentful client has been created
+   * Repeated calls to `.client` after the Contentful client has been created
    * will return a cached instance.
    * @return {Object} - Contentful API client.
    */
-  client() {
+  get client() {
     if (this.connect) return this.connect;
 
     // When running in `development` mode, the Contentful API client will
@@ -62,7 +62,7 @@ class ContentfulCache {
     const accessToken = this.isProd ? this.accessToken : this.previewToken;
     const host = !this.isProd ? 'preview.contentful.com' : null;
 
-    this.connect = contentful.createClient({
+    this.connect = createClient({
       accessToken,
       host,
       resolveLinks: false,
@@ -80,7 +80,7 @@ class ContentfulCache {
    */
   asset(assetId) {
     return this.cache.wrap(`asset.${assetId}`, () => {
-      return this.client().getAsset(assetId);
+      return this.client.getAsset(assetId);
     }).then((asset) => {
       return embed(asset.fields.file, this.wrapperConfig);
     });
@@ -94,7 +94,7 @@ class ContentfulCache {
    * @return {Promise} - Resolved with all images in an object.
    */
   assets(assetIds) {
-    return this.client().getAssets({
+    return this.client.getAssets({
       'sys.id[in]': assetIds.join(','),
       'locale': '*',
     }).then((assets) => {
@@ -111,12 +111,14 @@ class ContentfulCache {
    * Retrieve a single entry by it's UUID. If the entry is  missing from cache,
    * an API request will be made to fetch from Contentful.
    * @param {String} entryId - Contentful UUID.
-   * @return {Promise} - Resolved with the entry object.
+   * @return {Promise} - Resolved with the wrapped entry object.
    */
-  entry(entryId) {
-    return this.cache.wrap(entryId, () => {
-      return this.syncOne(entryId);
-    });
+  async entry(entryId) {
+    let entry = await this.cache.get(entryId);
+    if (!entry) {
+      entry = await this.syncOne(entryId);
+    }
+    return this.wrap(entry);
   }
 
   // Caching
@@ -131,8 +133,8 @@ class ContentfulCache {
 
   /**
    * Update the internal cache with an entry returned from the API.
-   * @param {Object} entry - A raw Contentful entry from the API.
-   * @return {Object} - The wrapped entry.
+   * @param {Object} entry - Contentful entry from the API.
+   * @return {Object} - The original raw entry.
    */
   cacheUpdate(entry) {
     this.cache.set(entry.sys.id, entry);
@@ -203,7 +205,7 @@ class ContentfulCache {
    * pulled down with paginated API requests and cached.
    * @return {Promise} - Fulfilled when the sync has finished.
    */
-  sync() {
+  async sync() {
     return this.syncPaged();
   }
 
@@ -217,7 +219,7 @@ class ContentfulCache {
    * @return {Promise} - Fullfilled with the wrapped Contentful entry.
    */
   syncOne(entryId) {
-    return this.client().getEntries({
+    return this.client.getEntries({
       'sys.id': entryId,
       'locale': '*',
       'include': 10,
@@ -238,7 +240,7 @@ class ContentfulCache {
    * @return {Promise} - Fullfilled once all pages have been sync'd.
    */
   syncPaged(limit, skip) {
-    return this.client().getEntries({
+    return this.client.getEntries({
       locale: '*',
       include: 10,
       limit: limit || 250,
@@ -256,10 +258,8 @@ class ContentfulCache {
 
       this.updateRoutes(routes);
 
-      // Each entry is wrapped and cached.
-      _.each(response.items, async (entry) => {
-        await this.cacheUpdate(entry);
-      });
+      // Each entry is cached.
+      response.items.map(async (entry) => await this.cacheUpdate(entry));
 
       // When the number of entries exceeds what we have downloaded thus far,
       // the function calls itself with the same limit and an auto-incremented
@@ -267,7 +267,6 @@ class ContentfulCache {
       if (response.total > response.skip + response.limit) {
         return this.syncPaged(limit, response.skip + response.limit);
       }
-
       return response;
     });
   }
