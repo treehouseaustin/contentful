@@ -65,6 +65,7 @@ class ContentfulCache {
     this.connect = contentful.createClient({
       accessToken,
       host,
+      resolveLinks: false,
       space: this.space,
     });
 
@@ -134,14 +135,8 @@ class ContentfulCache {
    * @return {Object} - The wrapped entry.
    */
   cacheUpdate(entry) {
-    entry = this.wrap(entry);
     this.cache.set(entry.sys.id, entry);
     this.onCacheUpdate(entry);
-
-    if (entry.slug) {
-      this.updateRoute(entry.slug, entry);
-    }
-
     return entry;
   }
 
@@ -171,24 +166,20 @@ class ContentfulCache {
    * @return {Promise} Fulfilled with the cache contents.
    */
   getRoutes() {
-    return new Promise((resolve, reject) => {
-      this.cache.get('$routes', (err, results) => {
-        if (err) return reject(err);
-        resolve(results);
-      });
-    });
+    return this.cache.get('$routes');
   }
 
   /**
-   * Update routing with new content or flag an existing route to be removed.
-   * @param {String} slug - The route to be modified or created.
-   * @param {Object} entry - Either the Contentful entry or `false` to
-   * mark this route for deletion.
+   * Update internal routing cache with new content.
+   * @param {Object} routes - New routes to be merged.
+   * @return {Promise}
    */
-  async updateRoute({slug, sys}) {
-    let routes = await this.getRoutes();
-    routes[slug] = [sys.contentType.sys.id, sys.id];
-    this.cache.set('$routes', routes);
+  async updateRoutes(routes) {
+    let existing = await this.getRoutes();
+    return this.cache.set('$routes', {
+      ...existing,
+      ...routes,
+    });
   }
 
   /**
@@ -256,9 +247,18 @@ class ContentfulCache {
     }).then((response) => {
       response = response.toPlainObject();
 
+      const routes = response.items
+          .filter(({fields}) => !!fields.slug)
+          .reduce((all, {fields, sys}) => {
+            all[fields.slug[this.lang]] = [sys.contentType.sys.id, sys.id];
+            return all;
+          }, {});
+
+      this.updateRoutes(routes);
+
       // Each entry is wrapped and cached.
-      _.each(response.items, (entry) => {
-        this.cacheUpdate(entry);
+      _.each(response.items, async (entry) => {
+        await this.cacheUpdate(entry);
       });
 
       // When the number of entries exceeds what we have downloaded thus far,
