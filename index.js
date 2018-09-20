@@ -62,7 +62,6 @@ class ContentfulCache {
     this.connect = createClient({
       accessToken,
       host,
-      resolveLinks: false,
       space: this.space,
     });
 
