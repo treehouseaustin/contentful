@@ -38,5 +38,9 @@
   "jest": {
     "collectCoverage": true,
     "coverageDirectory": "coverage"
+  },
+  "sails": {
+    "isHook": true,
+    "main": "sails/index.js"
   }
 }
