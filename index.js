@@ -166,9 +166,9 @@ class ContentfulCache {
       limit: limit || 250,
       order: '-sys.updatedAt',
       skip: skip || 0,
-    }).then((response) => {
+    }).then(async (response) => {
       response = response.toPlainObject();
-      this.cache.updateEntries(response.items);
+      await this.cache.updateEntries(response.items);
 
       // When the number of entries exceeds what we have downloaded thus far,
       // the function calls itself with the same limit and an auto-incremented
