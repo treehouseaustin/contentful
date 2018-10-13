@@ -2,7 +2,7 @@ const {createClient} = require('contentful');
 
 const ContentfulWrapper = require('./lib/wrapper');
 const CacheService = require('./lib/cache');
-const embed = require('./lib/embed-asset');
+const transformAsset = require('./transform/assets');
 
 /**
  * The Contentful cache store can be used to keep a local copy of all entries in
@@ -78,7 +78,7 @@ class ContentfulCache {
     return this.cache.wrap(`asset.${assetId}`, () => {
       return this.client.getAsset(assetId);
     }).then((asset) => {
-      return embed(asset.fields.file, this.wrapperConfig);
+      return transformAsset(asset, this.wrapperConfig);
     });
   }
 
@@ -94,12 +94,7 @@ class ContentfulCache {
       'sys.id[in]': assetIds.join(','),
       'locale': '*',
     }).then((assets) => {
-      let wrapped = {};
-      assets.items.forEach((asset) => {
-        const field = asset.fields.file[this.lang];
-        wrapped[asset.sys.id] = embed(field, this.wrapperConfig);
-      });
-      return wrapped;
+      return transformAsset(assets.items, this.wrapperConfig);
     });
   }
 
