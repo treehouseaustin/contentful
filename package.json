@@ -1,7 +1,7 @@
 {
   "name": "@treehouse/contentful",
   "description": "Content model wrappers for Contentful API.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "license": "MIT",
   "main": "index.js",
   "scripts": {
