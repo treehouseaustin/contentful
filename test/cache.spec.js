@@ -1,23 +1,20 @@
-const redisStore = require('cache-manager-redis');
-
 const Contentful = require('../');
 const fixture = require('./fixtures/sync-page.json');
 
 describe('cache service', () => {
   let store;
-  beforeAll(() => {
+  beforeAll((done) => {
     store = new Contentful('0wm9nswht8zw', {
       cache: {
-        store: redisStore,
         db: 0,
-        ttl: 600,
         port: 32768,
       },
     });
+    store.cache.client.flushdb((err) => done(err));
   });
 
-  it('respects cache configuration', () => {
-    expect(store.cache.cache.store.name).toBe('redis');
+  afterAll((done) => {
+    store.cache.client.quit((err) => done(err));
   });
 
   it('caches routes', async () => {
