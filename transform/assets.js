@@ -9,6 +9,8 @@ module.exports = function transformAssets(field, config) {
   const assetMeta = (fields) => {
     const lang = config.lang || 'en-US';
     const {title, description, file} = fields;
+    if (!file) return;
+
     const {details, contentType, url} = file[lang];
 
     return {
@@ -16,7 +18,7 @@ module.exports = function transformAssets(field, config) {
       description: description && description[lang] || '',
       url: ((url) => {
         if (!config.cdnHost) return url;
-        let hostAddress = `images.ctfassets.net/${config.spaceId}`;
+        const hostAddress = `images.ctfassets.net/${config.spaceId}`;
         return url.replace(hostAddress, config.cdnHost);
       })(url),
       file: {
