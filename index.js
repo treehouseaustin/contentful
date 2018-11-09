@@ -118,9 +118,19 @@ class ContentfulCache {
   /**
    * Helper function to run a full sync against Contentful. All content will be
    * pulled down with paginated API requests and cached.
+   * @param {Object} config - Optional flags.
+   * @param {Boolean} config.purge - Whether the database should be flushed
+   * before a re-sync. Useful if the cache has become corrupted. Use with care
+   * since the purge will happen whether or not the Contentful API is reachable.
    * @return {Promise} - Fulfilled when the sync has finished.
    */
-  async sync() {
+  async sync(config = {}) {
+    if (config.purge) {
+      return this.cache.client.flushdb((err) => {
+        if (err) console.error(err);
+        this.syncPaged();
+      });
+    }
     return this.syncPaged();
   }
 
